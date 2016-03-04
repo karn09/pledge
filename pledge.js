@@ -16,52 +16,90 @@ $Promise.prototype.then = function (successCb, errorCb) {
   if (typeof errorCb !== 'function') {
     errorCb = null;
   }
-  this.handlerGroups.push({successCb: successCb, errorCb: errorCb});
+  var newGroup = {
+    successCb: successCb, errorCb: errorCb, forwarder: new Deferral()
+  }
+  this.handlerGroups.push(newGroup);
   this.callHandlers();
+  
+  return newGroup.forwarder.$promise;
 };
 
 $Promise.prototype.catch = function(errorFn) {
-  this.then(null, errorFn);
+  return this.then(null, errorFn);
 };
 
 $Promise.prototype.callHandlers = function () {
   // return and run last function in object held within this.handlerGroups.
-  var latest = this.handlerGroups.length - 1;
-  if (this.state === 'resolved') {
-    this.handlerGroups[latest].successCb(this.value);
+  // var latest = this.handlerGroups.length - 1;
+  // if (this.state === 'resolved') {
+  //   this.handlerGroups[latest].successCb(this.value);
+  // }
+  // if (this.state === 'rejected' && this.handlerGroups[latest].errorCb) {
+  //   this.handlerGroups[latest].errorCb(this.value);
+  // }
+  if (this.state === 'pending') {
+    return;
   }
-  if (this.state === 'rejected' && this.handlerGroups[latest].errorCb) {
-    this.handlerGroups[latest].errorCb(this.value);
-  }
-
+  var that = this;
+  this.handlerGroups.forEach(function(group) {
+    if (that.state === 'resolved') {
+      if (isFn(group.successCb)) {
+        group.successCb(that.value)
+      } else {
+        group.forwarder.resolve(that.value)
+      }
+    } else {
+      if (isFn(group.errorCb)) {
+        group.errorCb(that.value)
+      } else {
+        group.forwarder.reject(that.value)
+      }
+    }
+  })
+  this.handlerGroups = [];
 };
+
+function isFn (fn) {
+  return typeof fn === 'function';
+}
 
 function Deferral() {
   this.$promise = new $Promise();
 }
-Deferral.prototype.resolve = function (data) {
+function settle (state, value) {
   if (this.$promise.state === 'pending') {
-    this.$promise.state = 'resolved';
-    this.$promise.value = data;
-    if (this.$promise.handlerGroups.length > 0) {
-      for (var i = 0; i < this.$promise.handlerGroups.length; i++) {
-        this.$promise.handlerGroups[i].successCb(data);
-      }
-      this.$promise.handlerGroups = [];
-    }
+    this.$promise.state = state;
+    this.$promise.value = value;
+    this.$promise.callHandlers();
   }
+}
+
+Deferral.prototype.resolve = function (data) {
+  // if (this.$promise.state === 'pending') {
+  //   this.$promise.state = 'resolved';
+  //   this.$promise.value = data;
+  //   if (this.$promise.handlerGroups.length > 0) {
+  //     for (var i = 0; i < this.$promise.handlerGroups.length; i++) {
+  //       this.$promise.handlerGroups[i].successCb(data);
+  //     }
+  //     this.$promise.handlerGroups = [];
+  //   }
+  // }
+  settle.call(this, 'resolved', data);
 };
 Deferral.prototype.reject = function (err) {
-  if (this.$promise.state === 'pending') {
-    this.$promise.state = 'rejected';
-    this.$promise.value = err;
-    if (this.$promise.handlerGroups.length > 0) {
-      for (var i = 0; i < this.$promise.handlerGroups.length; i++) {
-        this.$promise.handlerGroups[i].errorCb(err);
-      }
-      this.$promise.handlerGroups = [];
-    }
-  }
+  // if (this.$promise.state === 'pending') {
+  //   this.$promise.state = 'rejected';
+  //   this.$promise.value = err;
+  //   if (this.$promise.handlerGroups.length > 0) {
+  //     for (var i = 0; i < this.$promise.handlerGroups.length; i++) {
+  //       this.$promise.handlerGroups[i].errorCb(err);
+  //     }
+  //     this.$promise.handlerGroups = [];
+  //   }
+  // }
+  settle.call(this, 'rejected', err)
 };
 
 function defer() {
