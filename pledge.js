@@ -41,19 +41,22 @@ $Promise.prototype.callHandlers = function () {
   if (this.state === 'pending') {
     return;
   }
-  var that = this;
+  
+  var pA = this, pbDeferral; //renamed that to pA as this will be the initial found promise. 
+  
   this.handlerGroups.forEach(function(group) {
-    if (that.state === 'resolved') {
+    pbDeferral = group.forwarder;
+    if (pA.state === 'resolved') {
       if (isFn(group.successCb)) {
-        group.successCb(that.value)
-      } else {
-        group.forwarder.resolve(that.value)
+        group.successCb(pA.value);
+      } else { // if no success handler on pA, resolve with that instead
+        pbDeferral.resolve(pA.value);
       }
     } else {
       if (isFn(group.errorCb)) {
-        group.errorCb(that.value)
-      } else {
-        group.forwarder.reject(that.value)
+        group.errorCb(pA.value)
+      } else { // no error handler found, move 
+        pbDeferral.reject(pA.value)
       }
     }
   })
